@@ -1,0 +1,43 @@
+from typing import Iterator, Optional
+import c4d
+
+doc: c4d.documents.BaseDocument  # The active document
+op: Optional[c4d.BaseObject]  # The active object, None if unselected
+
+
+def iter_all_objects(obj: Optional[c4d.BaseObject]) -> Iterator[c4d.BaseObject]:
+    """Walks the whole object hierarchy (depth first) without recursion."""
+    while obj is not None:
+        yield obj
+        if obj.GetDown() is not None:          # Go into the children first
+            obj = obj.GetDown()
+            continue
+        while obj is not None and obj.GetNext() is None:
+            obj = obj.GetUp()                  # No more siblings, climb back up
+        if obj is not None:
+            obj = obj.GetNext()                # Continue with the next sibling
+
+
+def remove_empty_material_tags() -> None:
+    objects = list(iter_all_objects(doc.GetFirstObject()))
+    if not objects:
+        return
+
+    doc.StartUndo()
+
+    for obj in objects:
+        # Collect first, then remove, so the tag list isn't changed while looping over it.
+        empty_tags = [
+            tag for tag in obj.GetTags()
+            if tag.GetType() == c4d.Ttexture and tag.GetMaterial() is None
+        ]
+        for tag in empty_tags:
+            doc.AddUndo(c4d.UNDOTYPE_DELETEOBJ, tag)
+            tag.Remove()
+
+    doc.EndUndo()
+    c4d.EventAdd()
+
+
+if __name__ == '__main__':
+    remove_empty_material_tags()
